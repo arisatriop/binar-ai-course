@@ -1,77 +1,69 @@
-import pool from "@/lib/db";
 import { NextResponse } from "next/server";
-import "dotenv/config";
+import pool from "@/lib/db";
 
-export async function GET(request) {
-  const { searchParams } = new URL(request.url);
+export async function GET(req) {
+  const { searchParams } = new URL(req.url);
+  const statusFilter = searchParams.get("status");
+  const minLatency = searchParams.get("minLatency");
+  const maxLatency = searchParams.get("maxLatency");
   const start = searchParams.get("start");
   const end = searchParams.get("end");
-  const status = searchParams.get("status");
 
-  const whereClauses = [];
-  const values = [];
+  let conditions = [];
+  let values = [];
 
-  let i = 1;
+  if (statusFilter === "2xx") {
+    conditions.push("status BETWEEN 200 AND 299");
+  } else if (statusFilter === "4xx") {
+    conditions.push("status BETWEEN 400 AND 499");
+  } else if (statusFilter === "5xx") {
+    conditions.push("status BETWEEN 500 AND 599");
+  } else if (statusFilter) {
+    conditions.push(`status = $${values.length + 1}`);
+    values.push(Number(statusFilter));
+  }
+
+  if (minLatency) {
+    conditions.push(`latency_ns >= $${values.length + 1}`);
+    values.push(Number(minLatency));
+  }
+
+  if (maxLatency) {
+    conditions.push(`latency_ns <= $${values.length + 1}`);
+    values.push(Number(maxLatency));
+  }
 
   if (start) {
-    whereClauses.push(`timestamp >= $${i++}`);
+    conditions.push(`timestamp >= $${values.length + 1}`);
     values.push(start);
   }
 
   if (end) {
-    whereClauses.push(`timestamp <= $${i++}`);
+    conditions.push(`timestamp <= $${values.length + 1}`);
     values.push(end);
   }
 
-  if (status) {
-    if (status.endsWith("xx")) {
-      const base = parseInt(status.slice(0, -2)) * 100;
-      whereClauses.push(`status BETWEEN $${i++} AND $${i++}`);
-      values.push(base);
-      values.push(base + 99);
-    } else {
-      whereClauses.push(`status = $${i++}`);
-      values.push(parseInt(status));
-    }
-  }
+  const whereClause = conditions.length
+    ? `WHERE ${conditions.join(" AND ")}`
+    : "";
 
-  const where =
-    whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
+  const query = `
+    SELECT
+      COUNT(*) as total,
+      COUNT(*) FILTER (WHERE status BETWEEN 200 AND 299) as success,
+      COUNT(*) FILTER (WHERE status BETWEEN 400 AND 499) as clientError,
+      COUNT(*) FILTER (WHERE status >= 500) as serverError
+    FROM logs
+    ${whereClause}
+  `;
 
-  try {
-    const { rows } = await pool.query(
-      `
-      SELECT 
-        COUNT(*) AS total,
-        COUNT(*) FILTER (WHERE status BETWEEN 200 AND 299) AS success,
-        COUNT(*) FILTER (WHERE status BETWEEN 400 AND 499) AS clientError,
-        COUNT(*) FILTER (WHERE status BETWEEN 500 AND 599) AS serverError
-      FROM logs
-      ${where}
-      `,
-      values
-    );
+  const result = await pool.query(query, values);
+  const stats = result.rows[0];
 
-    const stats = rows[0];
-
-    return NextResponse.json({
-      total: formatNumber(stats.total),
-      success: formatNumber(stats.success),
-      clientError: formatNumber(stats.clienterror),
-      serverError: formatNumber(stats.servererror),
-    });
-  } catch (err) {
-    console.error("Error fetching stats:", err);
-    return NextResponse.json(
-      { error: "Failed to fetch stats" },
-      { status: 500 }
-    );
-  }
-}
-
-function formatNumber(value) {
-  const number = parseInt(value);
-  if (number >= 1_000_000) return `${(number / 1_000_000).toFixed(1)} m`;
-  if (number >= 1_000) return `${(number / 1_000).toFixed(1)} k`;
-  return `${number}`;
+  return NextResponse.json({
+    total: Number(stats.total),
+    success: Number(stats.success),
+    clientError: Number(stats.clienterror),
+    serverError: Number(stats.servererror),
+  });
 }

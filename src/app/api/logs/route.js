@@ -11,6 +11,9 @@ export async function GET(request) {
   const endTimestamp = searchParams.get("end");
   const status = searchParams.get("status");
 
+  const minLatency = searchParams.get("minLatency");
+  const maxLatency = searchParams.get("maxLatency");
+
   const whereClauses = [];
   const values = [pageSize, offset];
   let paramIndex = 3;
@@ -27,7 +30,6 @@ export async function GET(request) {
 
   if (status) {
     if (/^[1-5]xx$/.test(status)) {
-      // e.g. "2xx" → BETWEEN 200 AND 299
       const statusGroup = parseInt(status[0]);
       const from = statusGroup * 100;
       const to = from + 99;
@@ -35,7 +37,6 @@ export async function GET(request) {
       values.push(from, to);
       paramIndex += 2;
     } else if (/^\d+$/.test(status)) {
-      // exact match, e.g. "200"
       whereClauses.push(`status = $${paramIndex++}`);
       values.push(parseInt(status));
     } else {
@@ -44,6 +45,17 @@ export async function GET(request) {
         { status: 400 }
       );
     }
+  }
+
+  // Add latency filter (in nanoseconds)
+  if (minLatency) {
+    whereClauses.push(`latency_ns >= $${paramIndex++}`);
+    values.push(Number(minLatency));
+  }
+
+  if (maxLatency) {
+    whereClauses.push(`latency_ns <= $${paramIndex++}`);
+    values.push(Number(maxLatency));
   }
 
   const whereClause = whereClauses.length

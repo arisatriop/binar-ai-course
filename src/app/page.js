@@ -2,6 +2,13 @@
 
 import { useEffect, useState } from "react";
 
+function formatNumber(value) {
+  const number = parseInt(value);
+  if (number >= 1_000_000) return `${(number / 1_000_000).toFixed(1)} m`;
+  if (number >= 1_000) return `${(number / 1_000).toFixed(1)} k`;
+  return `${number}`;
+}
+
 function formatLatency(nanoseconds) {
   if (nanoseconds === null) return "-";
   const ms = nanoseconds / 1e6;
@@ -22,21 +29,41 @@ export default function Page() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [latencyFilter, setLatencyFilter] = useState("");
   const [page, setPage] = useState(1);
   const pageSize = 10;
   const [isLoading, setIsLoading] = useState(false);
+
+  function getLatencyBounds() {
+    let minLatency, maxLatency;
+
+    if (latencyFilter === "lt500") {
+      minLatency = 0;
+      maxLatency = 500 * 1e6; // 500 ms to ns
+    } else if (latencyFilter === "gt500") {
+      minLatency = 500 * 1e6; // > 500 ms
+    } else if (latencyFilter === "gt1000") {
+      minLatency = 1000 * 1e6; // > 1 s
+    }
+
+    return { minLatency, maxLatency };
+  }
 
   // Fetch logs
   useEffect(() => {
     async function fetchLogs() {
       setIsLoading(true);
       try {
+        const { minLatency, maxLatency } = getLatencyBounds();
+
         const query = new URLSearchParams({
           page: page.toString(),
           pageSize: pageSize.toString(),
           ...(startDate && { start: startDate }),
           ...(endDate && { end: endDate }),
           ...(statusFilter && { status: statusFilter }),
+          ...(minLatency !== undefined && { minLatency }),
+          ...(maxLatency !== undefined && { maxLatency }),
         }).toString();
 
         const res = await fetch(`/api/logs?${query}`);
@@ -51,16 +78,20 @@ export default function Page() {
     }
 
     fetchLogs();
-  }, [page, startDate, endDate, statusFilter]);
+  }, [page, startDate, endDate, statusFilter, latencyFilter]);
 
   // Fetch stats
   useEffect(() => {
     async function fetchStats() {
       try {
+        const { minLatency, maxLatency } = getLatencyBounds();
+
         const query = new URLSearchParams({
           ...(startDate && { start: startDate }),
           ...(endDate && { end: endDate }),
           ...(statusFilter && { status: statusFilter }),
+          ...(minLatency !== undefined && { minLatency }),
+          ...(maxLatency !== undefined && { maxLatency }),
         }).toString();
 
         const res = await fetch(`/api/stats?${query}`);
@@ -75,7 +106,7 @@ export default function Page() {
     }
 
     fetchStats();
-  }, [startDate, endDate, statusFilter]);
+  }, [startDate, endDate, statusFilter, latencyFilter]);
 
   const handleNextPage = () => setPage((prev) => prev + 1);
   const handlePrevPage = () => setPage((prev) => Math.max(prev - 1, 1));
@@ -141,24 +172,47 @@ export default function Page() {
             <option value="500">500</option>
           </select>
         </div>
+
+        <div className="flex flex-col">
+          <label
+            htmlFor="latency-filter"
+            className="text-sm text-gray-700 mb-1"
+          >
+            Latency
+          </label>
+          <select
+            id="latency-filter"
+            value={latencyFilter}
+            onChange={(e) => {
+              setLatencyFilter(e.target.value);
+              setPage(1);
+            }}
+            className="border p-2 rounded"
+          >
+            <option value="">All</option>
+            <option value="lt500">0 - 500 ms</option>
+            <option value="gt500">&gt; 500 ms</option>
+            <option value="gt1000">&gt; 1 s</option>
+          </select>
+        </div>
       </div>
 
       <div className="grid grid-cols-4 gap-4 mb-6">
         <div className="bg-gray-100 p-4 rounded shadow">
           <p className="text-sm text-gray-600">Total</p>
-          <p className="text-xl font-bold">{stats.total}</p>
+          <p className="text-xl font-bold">{formatNumber(stats.total)}</p>
         </div>
         <div className="bg-green-100 p-4 rounded shadow">
           <p className="text-sm text-green-800">Success (2xx)</p>
-          <p className="text-xl font-bold">{stats.success}</p>
+          <p className="text-xl font-bold">{formatNumber(stats.success)}</p>
         </div>
         <div className="bg-yellow-100 p-4 rounded shadow">
           <p className="text-sm text-yellow-800">Client Error (4xx)</p>
-          <p className="text-xl font-bold">{stats.clientError}</p>
+          <p className="text-xl font-bold">{formatNumber(stats.clientError)}</p>
         </div>
         <div className="bg-red-100 p-4 rounded shadow">
           <p className="text-sm text-red-800">Server Error (5xx)</p>
-          <p className="text-xl font-bold">{stats.serverError}</p>
+          <p className="text-xl font-bold">{formatNumber(stats.serverError)}</p>
         </div>
       </div>
 
@@ -199,7 +253,6 @@ export default function Page() {
         </tbody>
       </table>
 
-      {/* Pagination moved here */}
       <div className="flex justify-between items-center mt-2">
         <span className="text-sm text-gray-600">Page {page}</span>
 
