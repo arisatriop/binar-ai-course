@@ -1,103 +1,224 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useEffect, useState } from "react";
+
+function formatLatency(nanoseconds) {
+  if (nanoseconds === null) return "-";
+  const ms = nanoseconds / 1e6;
+  if (ms < 1) return `${(ms * 1000).toFixed(2)} µs`;
+  if (ms < 1000) return `${ms.toFixed(2)} ms`;
+  return `${(ms / 1000).toFixed(2)} s`;
+}
+
+export default function Page() {
+  const [logs, setLogs] = useState([]);
+  const [stats, setStats] = useState({
+    total: 0,
+    success: 0,
+    clientError: 0,
+    serverError: 0,
+  });
+
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const pageSize = 10;
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Fetch logs
+  useEffect(() => {
+    async function fetchLogs() {
+      setIsLoading(true);
+      try {
+        const query = new URLSearchParams({
+          page: page.toString(),
+          pageSize: pageSize.toString(),
+          ...(startDate && { start: startDate }),
+          ...(endDate && { end: endDate }),
+          ...(statusFilter && { status: statusFilter }),
+        }).toString();
+
+        const res = await fetch(`/api/logs?${query}`);
+        const data = await res.json();
+        setLogs(data);
+      } catch (err) {
+        console.error("Fetch logs error:", err);
+        setLogs([]);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    fetchLogs();
+  }, [page, startDate, endDate, statusFilter]);
+
+  // Fetch stats
+  useEffect(() => {
+    async function fetchStats() {
+      try {
+        const query = new URLSearchParams({
+          ...(startDate && { start: startDate }),
+          ...(endDate && { end: endDate }),
+          ...(statusFilter && { status: statusFilter }),
+        }).toString();
+
+        const res = await fetch(`/api/stats?${query}`);
+        const data = await res.json();
+
+        if (data?.total !== undefined) {
+          setStats(data);
+        }
+      } catch (err) {
+        console.error("Fetch stats error:", err);
+      }
+    }
+
+    fetchStats();
+  }, [startDate, endDate, statusFilter]);
+
+  const handleNextPage = () => setPage((prev) => prev + 1);
+  const handlePrevPage = () => setPage((prev) => Math.max(prev - 1, 1));
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.js
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <div className="p-4">
+      <h1 className="text-xl font-bold mb-4">Log Dashboard</h1>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+      <div className="flex gap-4 mb-4">
+        <div className="flex flex-col">
+          <label htmlFor="start-date" className="text-sm text-gray-700 mb-1">
+            Start Date
+          </label>
+          <input
+            id="start-date"
+            type="date"
+            value={startDate}
+            onChange={(e) => {
+              setPage(1);
+              setStartDate(e.target.value);
+            }}
+            className="border p-2 rounded"
+          />
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+
+        <div className="flex flex-col">
+          <label htmlFor="end-date" className="text-sm text-gray-700 mb-1">
+            End Date
+          </label>
+          <input
+            id="end-date"
+            type="date"
+            value={endDate}
+            onChange={(e) => {
+              setPage(1);
+              setEndDate(e.target.value);
+            }}
+            className="border p-2 rounded"
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+        </div>
+
+        <div className="flex flex-col">
+          <label htmlFor="status-filter" className="text-sm text-gray-700 mb-1">
+            Status
+          </label>
+          <select
+            id="status-filter"
+            value={statusFilter}
+            onChange={(e) => {
+              setPage(1);
+              setStatusFilter(e.target.value);
+            }}
+            className="border p-2 rounded"
+          >
+            <option value="">All Status</option>
+            <option value="2xx">2xx</option>
+            <option value="4xx">4xx</option>
+            <option value="5xx">5xx</option>
+            <option value="200">200</option>
+            <option value="401">401</option>
+            <option value="403">403</option>
+            <option value="404">404</option>
+            <option value="500">500</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="bg-gray-100 p-4 rounded shadow">
+          <p className="text-sm text-gray-600">Total</p>
+          <p className="text-xl font-bold">{stats.total}</p>
+        </div>
+        <div className="bg-green-100 p-4 rounded shadow">
+          <p className="text-sm text-green-800">Success (2xx)</p>
+          <p className="text-xl font-bold">{stats.success}</p>
+        </div>
+        <div className="bg-yellow-100 p-4 rounded shadow">
+          <p className="text-sm text-yellow-800">Client Error (4xx)</p>
+          <p className="text-xl font-bold">{stats.clientError}</p>
+        </div>
+        <div className="bg-red-100 p-4 rounded shadow">
+          <p className="text-sm text-red-800">Server Error (5xx)</p>
+          <p className="text-xl font-bold">{stats.serverError}</p>
+        </div>
+      </div>
+
+      <table className="w-full border mb-4">
+        <thead>
+          <tr className="bg-gray-200 text-left">
+            <th className="p-2 border">Timestamp</th>
+            <th className="p-2 border">Status</th>
+            <th className="p-2 border">Endpoint</th>
+            <th className="p-2 border">Latency</th>
+          </tr>
+        </thead>
+        <tbody>
+          {isLoading ? (
+            <tr>
+              <td colSpan="4" className="p-4 text-center">
+                Loading...
+              </td>
+            </tr>
+          ) : logs.length === 0 ? (
+            <tr>
+              <td colSpan="4" className="p-4 text-center text-gray-500">
+                No logs found.
+              </td>
+            </tr>
+          ) : (
+            logs.map((log, idx) => (
+              <tr key={idx} className="border-t">
+                <td className="p-2 border">
+                  {new Date(log.timestamp).toLocaleString()}
+                </td>
+                <td className="p-2 border">{log.status}</td>
+                <td className="p-2 border">{log.endpoint}</td>
+                <td className="p-2 border">{formatLatency(log.latency_ns)}</td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+
+      {/* Pagination moved here */}
+      <div className="flex justify-between items-center mt-2">
+        <span className="text-sm text-gray-600">Page {page}</span>
+
+        <div>
+          <button
+            onClick={handlePrevPage}
+            disabled={page === 1}
+            className="px-4 py-2 mr-2 bg-gray-200 rounded disabled:opacity-50"
+          >
+            Prev
+          </button>
+          <button
+            onClick={handleNextPage}
+            className="px-4 py-2 bg-gray-200 rounded"
+          >
+            Next
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
