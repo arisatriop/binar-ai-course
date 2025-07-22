@@ -9,18 +9,23 @@ WORKDIR /app
 
 # Install dependencies based on the preferred package manager
 COPY package.json package-lock.json* ./
-RUN npm ci --only=production --omit=dev
+RUN npm ci
 
 # Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+
+# Copy package files and install ALL dependencies (including devDependencies)
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+# Copy source code
 COPY . .
 
 # Next.js collects completely anonymous telemetry data about general usage.
 # Learn more here: https://nextjs.org/telemetry
 # Disable telemetry during build for better performance in CI/CD
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build
 
@@ -28,9 +33,9 @@ RUN npm run build
 FROM base AS runner
 WORKDIR /app
 
-ENV NODE_ENV production
+ENV NODE_ENV=production
 # Disable telemetry during runtime for better performance
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NEXT_TELEMETRY_DISABLED=1
 
 # Create a non-root user for security (required for GKE security policies)
 RUN addgroup --system --gid 1001 nodejs
@@ -55,12 +60,8 @@ USER nextjs
 EXPOSE 3000
 
 # Environment variables for Kubernetes deployment
-ENV PORT 3000
-ENV HOSTNAME "0.0.0.0"
-
-# Add health check for Kubernetes readiness/liveness probes
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD node healthcheck.js
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
 
 # server.js is created by next build from the standalone output
 # https://nextjs.org/docs/pages/api-reference/next-config-js/output
