@@ -1,21 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-function formatNumber(value) {
-  const number = parseInt(value);
-  if (number >= 1_000_000) return `${(number / 1_000_000).toFixed(1)} m`;
-  if (number >= 1_000) return `${(number / 1_000).toFixed(1)} k`;
-  return `${number}`;
-}
-
-function formatLatency(nanoseconds) {
-  if (nanoseconds === null) return "-";
-  const ms = nanoseconds / 1e6;
-  if (ms < 1) return `${(ms * 1000).toFixed(2)} µs`;
-  if (ms < 1000) return `${ms.toFixed(2)} ms`;
-  return `${(ms / 1000).toFixed(2)} s`;
-}
+import {
+  formatNumber,
+  formatLatency,
+  getLatencyBounds,
+} from "@/utils/formatters";
 
 export default function Page() {
   const [logs, setLogs] = useState([]);
@@ -34,27 +24,12 @@ export default function Page() {
   const pageSize = 10;
   const [isLoading, setIsLoading] = useState(false);
 
-  function getLatencyBounds() {
-    let minLatency, maxLatency;
-
-    if (latencyFilter === "lt500") {
-      minLatency = 0;
-      maxLatency = 500 * 1e6; // 500 ms to ns
-    } else if (latencyFilter === "gt500") {
-      minLatency = 500 * 1e6; // > 500 ms
-    } else if (latencyFilter === "gt1000") {
-      minLatency = 1000 * 1e6; // > 1 s
-    }
-
-    return { minLatency, maxLatency };
-  }
-
   // Fetch logs
   useEffect(() => {
     async function fetchLogs() {
       setIsLoading(true);
       try {
-        const { minLatency, maxLatency } = getLatencyBounds();
+        const { minLatency, maxLatency } = getLatencyBounds(latencyFilter);
 
         const query = new URLSearchParams({
           page: page.toString(),
@@ -78,14 +53,13 @@ export default function Page() {
     }
 
     fetchLogs();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, startDate, endDate, statusFilter, latencyFilter]);
 
   // Fetch stats
   useEffect(() => {
     async function fetchStats() {
       try {
-        const { minLatency, maxLatency } = getLatencyBounds();
+        const { minLatency, maxLatency } = getLatencyBounds(latencyFilter);
 
         const query = new URLSearchParams({
           ...(startDate && { start: startDate }),
@@ -107,7 +81,6 @@ export default function Page() {
     }
 
     fetchStats();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startDate, endDate, statusFilter, latencyFilter]);
 
   const handleNextPage = () => setPage((prev) => prev + 1);
