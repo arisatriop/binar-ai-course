@@ -11,7 +11,8 @@ env:
   IMAGE: ghcr.io/${{ github.actor }}/nextjs-app
 
 jobs:
-  analyze:
+  # Fast quality checks - runs first for immediate feedback
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,14 +25,36 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Run SonarCloud analysis
-        run: |
-          npm run build
-          npx sonar-scanner -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+      - name: Run Linter
+        run: npm run lint
 
+  # Code analysis - runs in parallel with build after lint passes
+  analyze:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Application
+        run: npm run build
+
+      - name: Run SonarCloud Analysis
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: npx sonar-scanner
+
+  # Build and deploy - runs in parallel with analyze after lint passes
   build:
     runs-on: ubuntu-latest
-    needs: analyze
+    needs: lint
     permissions:
       packages: write
       contents: read
@@ -55,3 +78,21 @@ jobs:
         run: |
           docker tag $IMAGE:${{ github.sha }} $IMAGE:latest
           docker push $IMAGE:latest
+
+  # Check if build should be cancelled due to analysis failure
+  validate-deployment:
+    runs-on: ubuntu-latest
+    needs: [analyze, build]
+    if: always()
+    steps:
+      - name: Check Analysis Status
+        run: |
+          if [ "${{ needs.analyze.result }}" != "success" ]; then
+            echo "❌ Analysis failed - deployment should be cancelled"
+            exit 1
+          fi
+          if [ "${{ needs.build.result }}" != "success" ]; then
+            echo "❌ Build failed"
+            exit 1
+          fi
+          echo "✅ Both analysis and build completed successfully"

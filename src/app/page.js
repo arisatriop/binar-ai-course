@@ -78,6 +78,7 @@ export default function Page() {
     }
 
     fetchLogs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, startDate, endDate, statusFilter, latencyFilter]);
 
   // Fetch stats
@@ -106,6 +107,7 @@ export default function Page() {
     }
 
     fetchStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startDate, endDate, statusFilter, latencyFilter]);
 
   const handleNextPage = () => setPage((prev) => prev + 1);
